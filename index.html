@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>クラシック SameGame</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* 上寄せに変更 */
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            color: #333;
+            padding-top: 20px; /* 上部に余白を追加 */
+        }
+
+        .game-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        
+        h1 {
+            color: #444;
+            margin-bottom: 10px;
+        }
+
+        .info-panel {
+            display: flex;
+            justify-content: space-around;
+            width: 600px;
+            background: #fff;
+            padding: 15px 0;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+        }
+
+        .info-box {
+            font-size: 1.4em;
+        }
+
+        .info-box span {
+            font-weight: bold;
+            color: #007bff;
+        }
+        
+        #game-board {
+            width: 600px;
+            height: 800px;
+            border: 2px solid #333;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            border-radius: 8px;
+            background-image: url('https://raw.githubusercontent.com/keigox68000/samegame/refs/heads/main/bg.png');
+            background-size: cover;
+            background-position: center;
+            position: relative; /* メッセージ表示のため */
+            overflow: hidden; /* 角丸を適用するため */
+        }
+
+        .controls {
+            margin-top: 15px;
+        }
+
+        #restart-button {
+            padding: 12px 25px;
+            font-size: 1.2em;
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            font-weight: 700;
+            color: #fff;
+            background: linear-gradient(145deg, #ff416c, #ff4b2b);
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        #restart-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+        }
+
+        /* ゲームオーバーメッセージ */
+        #message-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.75);
+            color: white;
+            padding: 40px 60px;
+            border-radius: 20px;
+            font-size: 3em;
+            text-align: center;
+            z-index: 10;
+            display: none; /* 初期状態は非表示 */
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="game-container">
+        <h1>鮫亀 (SameGame)</h1>
+        <div class="info-panel">
+            <div class="info-box">SCORE: <span id="score">0</span></div>
+            <div class="info-box">HIGH SCORE: <span id="high-score">0</span></div>
+        </div>
+        <div id="game-canvas-container">
+            <canvas id="game-board"></canvas>
+             <!-- メッセージボックスをCanvasの上に配置 -->
+            <div id="message-box"></div>
+        </div>
+        <div class="controls">
+            <button id="restart-button">リスタート</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game-board');
+        const ctx = canvas.getContext('2d');
+        
+        const scoreEl = document.getElementById('score');
+        const highScoreEl = document.getElementById('high-score');
+        const restartButton = document.getElementById('restart-button');
+        const messageBox = document.getElementById('message-box');
+
+        const COLS = 10;
+        const ROWS = 15;
+        const BLOCK_SIZE = 60;
+        const GAME_WIDTH = COLS * BLOCK_SIZE;
+        const V_BLOCK_SIZE = 800 / ROWS;
+
+        const COLORS = [
+            '#EF5350', '#66BB6A', '#42A5F5', '#FFEE58', '#AB47BC'
+        ];
+
+        let grid = [];
+        let score = 0;
+        let highScore = 0;
+        let isAnimating = false; // アニメーション中のフラグ
+
+        function init() {
+            canvas.width = GAME_WIDTH;
+            canvas.height = ROWS * V_BLOCK_SIZE;
+
+            score = 0;
+            isAnimating = false;
+            updateScoreDisplay();
+            hideMessage();
+            
+            grid = [];
+            for (let c = 0; c < COLS; c++) {
+                grid[c] = [];
+                for (let r = 0; r < ROWS; r++) {
+                    const colorIndex = Math.floor(Math.random() * COLORS.length);
+                    grid[c][r] = colorIndex;
+                }
+            }
+            draw();
+        }
+
+        // ブロック単体を描画するヘルパー関数
+        function drawBlock(c, r, colorIndex) {
+            const x = c * BLOCK_SIZE;
+            const y = r * V_BLOCK_SIZE;
+            drawBlockAt(x, y, colorIndex);
+        }
+        
+        // 指定した座標にブロックを描画するヘルパー関数
+        function drawBlockAt(x, y, colorIndex) {
+            const color = COLORS[colorIndex];
+            const gap = 1; // ブロック間の隙間を調整
+            
+            ctx.fillStyle = color;
+            ctx.fillRect(x + gap, y + gap, BLOCK_SIZE - (gap * 2), V_BLOCK_SIZE - (gap * 2));
+            
+            // 縁取り
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.fillRect(x + gap, y + gap, BLOCK_SIZE - (gap * 2), 2);
+            ctx.fillRect(x + gap, y + gap, 2, V_BLOCK_SIZE - (gap * 2));
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            ctx.fillRect(x + gap, y + V_BLOCK_SIZE - gap - 2, BLOCK_SIZE - (gap * 2), 2);
+            ctx.fillRect(x + BLOCK_SIZE - gap - 2, y + gap, 2, V_BLOCK_SIZE - (gap * 2));
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let c = 0; c < COLS; c++) {
+                for (let r = 0; r < ROWS; r++) {
+                    if (grid[c][r] !== null) {
+                        drawBlock(c, r, grid[c][r]);
+                    }
+                }
+            }
+        }
+
+        canvas.addEventListener('click', (e) => {
+            if (isAnimating) return; // アニメーション中はクリックを無効化
+
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const col = Math.floor(mouseX / BLOCK_SIZE);
+            const row = Math.floor(mouseY / V_BLOCK_SIZE);
+
+            if (grid[col] && grid[col][row] !== null) {
+                const colorIndex = grid[col][row];
+                const connectedBlocks = findConnectedBlocks(col, row, colorIndex);
+
+                if (connectedBlocks.length >= 2) {
+                    score += Math.pow(connectedBlocks.length - 2, 2);
+                    
+                    connectedBlocks.forEach(block => {
+                        grid[block.c][block.r] = null;
+                    });
+                    
+                    draw(); // 消えた状態を一度描画
+                    startAnimationChain(); // アニメーションを開始
+                }
+            }
+        });
+        
+        function startAnimationChain() {
+            isAnimating = true;
+            const animDuration = 150; // アニメーション速度を調整
+            
+            // 1. 落下アニメーション
+            const gravityAnimations = getGravityAnimations();
+            runAnimation(gravityAnimations, animDuration, 'vertical', () => {
+                applyGravity(); // 落下をグリッドに適用
+                
+                // 2. 水平移動アニメーション
+                const shiftAnimations = getShiftAnimations();
+                runAnimation(shiftAnimations, animDuration, 'horizontal', () => {
+                    shiftColumns(); // 水平移動をグリッドに適用
+                    
+                    // 3. アニメーション完了
+                    isAnimating = false;
+                    draw();
+                    updateScoreDisplay();
+
+                    if (checkGameOver()) {
+                        let isGameOver = true;
+                        if (isAllClear()) {
+                             score += 1000;
+                             showMessage("ALL CLEAR!");
+                        } else {
+                             showMessage("GAME OVER");
+                        }
+                        updateScoreDisplay();
+                    }
+                });
+            });
+        }
+        
+        // アニメーション実行関数
+        function runAnimation(animations, duration, type, onComplete) {
+            if (animations.length === 0) {
+                onComplete();
+                return;
+            }
+
+            let startTime = null;
+            const movingBlocks = new Set();
+            animations.forEach(anim => {
+                movingBlocks.add(`${anim.fromC},${anim.fromR}`);
+            });
+
+            function frame(timestamp) {
+                if (!startTime) startTime = timestamp;
+                const progress = Math.min((timestamp - startTime) / duration, 1);
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // 静的なブロックを描画
+                for (let c = 0; c < COLS; c++) {
+                    for (let r = 0; r < ROWS; r++) {
+                        if (grid[c][r] !== null && !movingBlocks.has(`${c},${r}`)) {
+                            drawBlock(c, r, grid[c][r]);
+                        }
+                    }
+                }
+
+                // アニメーション中のブロックを描画
+                animations.forEach(anim => {
+                    const colorIndex = grid[anim.fromC][anim.fromR];
+                    if (colorIndex === null) return; // 消えたブロックは描画しない
+                    
+                    let currentX, currentY;
+                    
+                    const easeOutQuad = t => t * (2 - t);
+                    const easedProgress = easeOutQuad(progress);
+                    
+                    if (type === 'vertical') {
+                        currentX = anim.fromC * BLOCK_SIZE;
+                        const startY = anim.fromR * V_BLOCK_SIZE;
+                        const endY = anim.toR * V_BLOCK_SIZE;
+                        currentY = startY + (endY - startY) * easedProgress;
+                    } else { // horizontal
+                        const startX = anim.fromC * BLOCK_SIZE;
+                        const endX = anim.toC * BLOCK_SIZE;
+                        currentX = startX + (endX - startX) * easedProgress;
+                        currentY = anim.fromR * V_BLOCK_SIZE;
+                    }
+                    drawBlockAt(currentX, currentY, colorIndex);
+                });
+
+
+                if (progress < 1) {
+                    requestAnimationFrame(frame);
+                } else {
+                    onComplete();
+                }
+            }
+            requestAnimationFrame(frame);
+        }
+        
+        // 落下アニメーションの情報を取得
+        function getGravityAnimations() {
+            const animations = [];
+            const tempGrid = JSON.parse(JSON.stringify(grid));
+            for (let c = 0; c < COLS; c++) {
+                let fallDist = 0;
+                for (let r = ROWS - 1; r >= 0; r--) {
+                    if (tempGrid[c][r] === null) {
+                        fallDist++;
+                    } else if (fallDist > 0) {
+                        animations.push({ fromC: c, fromR: r, toR: r + fallDist });
+                        tempGrid[c][r + fallDist] = tempGrid[c][r];
+                        tempGrid[c][r] = null;
+                    }
+                }
+            }
+            return animations;
+        }
+        
+        // 水平移動アニメーションの情報を取得
+        function getShiftAnimations() {
+            const animations = [];
+            const tempGrid = JSON.parse(JSON.stringify(grid));
+            let shiftDist = 0;
+            for (let c = 0; c < COLS; c++) {
+                if (tempGrid[c].every(block => block === null)) {
+                    shiftDist++;
+                } else if (shiftDist > 0) {
+                    for (let r = 0; r < ROWS; r++) {
+                        if (tempGrid[c][r] !== null) {
+                            animations.push({ fromC: c, fromR: r, toC: c - shiftDist });
+                        }
+                    }
+                    tempGrid[c - shiftDist] = tempGrid[c];
+                    tempGrid[c] = Array(ROWS).fill(null);
+                }
+            }
+            return animations;
+        }
+
+        function findConnectedBlocks(startC, startR, colorIndex) {
+            const toVisit = [{ c: startC, r: startR }];
+            const visited = new Set();
+            const connected = [];
+
+            while (toVisit.length > 0) {
+                const current = toVisit.pop();
+                const key = `${current.c},${current.r}`;
+
+                if (visited.has(key) || !grid[current.c] || grid[current.c][current.r] !== colorIndex) {
+                    continue;
+                }
+                visited.add(key);
+                connected.push(current);
+
+                const neighbors = [
+                    { c: current.c, r: current.r - 1 }, { c: current.c, r: current.r + 1 },
+                    { c: current.c - 1, r: current.r }, { c: current.c + 1, r: current.r }
+                ];
+                neighbors.forEach(n => {
+                    if (n.c >= 0 && n.c < COLS && n.r >= 0 && n.r < ROWS) {
+                        toVisit.push(n);
+                    }
+                });
+            }
+            return connected;
+        }
+
+        function applyGravity() {
+            for (let c = 0; c < COLS; c++) {
+                const column = grid[c];
+                const newColumn = column.filter(block => block !== null);
+                const emptyBlocks = Array(ROWS - newColumn.length).fill(null);
+                grid[c] = emptyBlocks.concat(newColumn);
+            }
+        }
+        
+        function shiftColumns() {
+            const newGrid = [];
+            for (let c = 0; c < COLS; c++) {
+                if (!grid[c].every(block => block === null)) {
+                    newGrid.push(grid[c]);
+                }
+            }
+            const emptyColsCount = COLS - newGrid.length;
+            for (let i = 0; i < emptyColsCount; i++) {
+                newGrid.push(Array(ROWS).fill(null));
+            }
+            grid = newGrid;
+        }
+        
+        function updateScoreDisplay() {
+            scoreEl.textContent = score;
+            if (score > highScore) {
+                highScore = score;
+                highScoreEl.textContent = highScore;
+            }
+        }
+
+        function checkGameOver() {
+            for (let c = 0; c < COLS; c++) {
+                for (let r = 0; r < ROWS; r++) {
+                    if (grid[c][r] !== null) {
+                        const colorIndex = grid[c][r];
+                        if ((r > 0 && grid[c][r-1] === colorIndex) ||
+                            (r < ROWS - 1 && grid[c][r+1] === colorIndex) ||
+                            (c > 0 && grid[c-1] && grid[c-1][r] === colorIndex) ||
+                            (c < COLS - 1 && grid[c+1] && grid[c+1][r] === colorIndex)) {
+                            return false;
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+        
+        function isAllClear() {
+            return grid.every(col => col.every(block => block === null));
+        }
+
+        function showMessage(text) {
+            messageBox.textContent = text;
+            messageBox.style.display = 'block';
+        }
+
+        function hideMessage() {
+            messageBox.style.display = 'none';
+        }
+
+        restartButton.addEventListener('click', init);
+
+        init();
+    </script>
+</body>
+</html>
